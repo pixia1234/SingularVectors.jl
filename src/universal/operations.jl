@@ -315,3 +315,97 @@ function show(io::IO, x::AbstractEnvElem)
     key2sym(key) = prod(syms[i] for i in key)
     print(io, sum(val * key2sym(k) for (k, val) in dict))
 end
+
+function +(x::LieElem{T}, y::LieElem{T}) where T <: Number
+    return LieElem(x.scmat, x.vector + y.vector)
+end
+
+function *(a::T, x::LieElem{T}) where T <: Number
+    return LieElem(x.scmat, a * x.vector)
+end
+
+function is_closed_under_lie_bracket(algebra::AlgebraBySC{T}) where T <: Number
+    for i in 1:length(algebra.basis)
+        for j in i+1:length(algebra.basis)
+            result = lie_bracket(algebra, algebra.basis[i], algebra.basis[j])
+            if !all(isapprox(result.vector[k], 0.0; atol=1e-10) for k in 1:length(result.vector))
+                return false
+            end
+        end
+    end
+    return true
+end
+
+function center_of_algebra(algebra::AlgebraBySC{T}) where T <: Number
+    d = length(algebra.basis)
+    center_elements = []
+    for i in 1:d
+        elem = algebra.basis[i]
+        is_central = true
+        for j in 1:d
+            if !isapprox(norm(lie_bracket(algebra, elem, algebra.basis[j]).vector), 0.0; atol=1e-10)
+                is_central = false
+                break
+            end
+        end
+        if is_central
+            push!(center_elements, elem)
+        end
+    end
+    return center_elements
+end
+
+function dim(algebra::AlgebraBySC{T}) where T <: Number
+    return length(algebra.basis)
+end
+
+function representation(algebra::AlgebraBySC{T}, x::LieElem{T}) where T <: Number
+    d = dim(algebra.scmat)
+    rep_matrix = zeros(T, d, d)
+    for i in 1:d
+        for j in 1:d
+            rep_matrix[i, j] = lie_bracket(algebra, x, algebra.basis[j]).vector[i]
+        end
+    end
+    return rep_matrix
+end
+
+function cartesian_product(algebra1::AlgebraBySC{T}, algebra2::AlgebraBySC{T}) where T <: Number
+    new_basis = vcat(algebra1.basis, algebra2.basis)
+    new_scmat = blockdiag(algebra1.scmat, algebra2.scmat)
+    return AlgebraBySC(new_scmat, new_basis)
+end
+
+function derived_algebra(algebra::AlgebraBySC{T}) where T <: Number
+    derived_basis = []
+    for i in 1:length(algebra.basis)
+        for j in i+1:length(algebra.basis)
+            bracket = lie_bracket(algebra, algebra.basis[i], algebra.basis[j])
+            push!(derived_basis, bracket)
+        end
+    end
+    return AlgebraBySC(algebra.scmat, derived_basis)
+end
+
+function *(x::UEAElem{T}, y::UEAElem{T}, uea::UEA{T}) where T <: Number
+    terms = Dict{Tuple{Int, Int}, T}()
+    for ((i1, j1), v1) in x.terms
+        for ((i2, j2), v2) in y.terms
+            # 计算乘积 (i1 * i2, j1 * j2)
+            new_term = (i1, j2)
+            if new_term in terms
+                terms[new_term] += v1 * v2
+            else
+                terms[new_term] = v1 * v2
+            end
+            # 添加反向乘积，依据李代数关系
+            new_term_reverse = (i2, j1)
+            if new_term_reverse in terms
+                terms[new_term_reverse] -= v1 * v2
+            else
+                terms[new_term_reverse] = -v1 * v2
+            end
+        end
+    end
+    return UEAElem{T}(terms)
+end

@@ -84,3 +84,53 @@ function AlgebraBySC(scmat::SCMat{T}) where T <: Number
     basis = [LieElem(scmat, sparsevec([i], ones(T, 1), d)) for i in 1:d]
     return AlgebraBySC{T}(scmat, basis)
 end
+
+struct UEAElem{T<:Number}
+    terms::Dict{Tuple{Int, Int}, T} 
+end
+
+struct UEA{T<:Number}
+    algebra::AlgebraBySC{T}
+end
+
+function lie_bracket(algebra::AlgebraBySC{T}, x::LieElem{T}, y::LieElem{T}) where T <: Number
+    scmat = algebra.scmat
+    d = dim(scmat)
+    bracket_vector = spzeros(T, d) 
+    for i in 1:d
+        for j in 1:d
+            for k in 1:d
+                c_k_ij = scmat[k, i, j]
+                bracket_vector[k] += c_k_ij * x.vector[i] * y.vector[j]
+            end
+        end
+    end
+    return LieElem(scmat, bracket_vector)
+end
+
+function to_uea_elem(x::LieElem{T}) where T <: Number
+    terms = Dict{Tuple{Int, Int}, T}()
+    d = length(x.vector)
+    for i in 1:d
+        if !iszero(x.vector[i])
+            terms[(i, i)] = x.vector[i]
+        end
+    end
+    return UEAElem{T}(terms)
+end
+
+# Define the PBW basis for the UEA
+function PBWBasis(liealgebra::AlgebraBySC)
+    basis = []
+    # Generate the PBW basis from the Lie algebra generators (e.g., e, h, f)
+    for elem in liealgebra.scmat.syms
+        push!(basis, elem)
+    end
+    return basis
+end
+
+# Check if an element is sorted according to PBW
+function issortedbypbw(element::UEAElement, basis)
+    # Check that the terms in `element` are sorted according to the PBW basis
+    return issorted(keys(element.terms), by=basis)
+end
